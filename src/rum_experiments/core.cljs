@@ -70,6 +70,12 @@
   (defmulti read-fn (fn [k p] k))
   (defmulti novelty-fn (fn [k p] k))
 
+  ;; Both novelty and read functions can return plain value or promise
+  ;; the plain value or promise resolved resolved value can be any object
+  ;; or function. If function is returned is executed in context of state
+  ;; just like using `swap!` and plain values are returned to the user
+  ;; using promise abstraction.
+
   (defmethod read-fn :counters
     [_ params]
     (letfn [(index-counter [state item]
@@ -80,10 +86,10 @@
               (assoc state :counters items))]
       (m/mlet [items (api/get-counters)]
         (m/return
-         {:action (fn [state]
-                    (-> state
-                        (add-counters items)
-                        (index-counters items)))}))))
+         (fn [state]
+           (-> state
+               (add-counters items)
+               (index-counters items)))))))
 
   (defmethod read-fn :title
     [_ params]
@@ -91,16 +97,17 @@
 
   (defmethod novelty-fn :increment
     [_ {:keys [id] :as params}]
-    {:action #(update-in % [:couters id] inc)})
+    (fn [state]
+      (update-in state [:couters-by-id id :num] inc)})
+
+  ;; The init function is some kind of entry point of the storage
+  ;; and it will be executed as soon as posible. It is responsible
+  ;; to populate some initial state.
 
   (defn init
     [s]
-    ;; The emit! function should
-    ;; return a promise that will
-    ;; be resolved when all operations
-    ;; are completely done
-    (st/emit! s [[:read :counters]
-                 [:read :title]]))
+    (st/read! store [[:counters :useless-param]
+                     [:title]]))
 
   (def store
     (st/store {:state state
