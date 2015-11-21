@@ -67,6 +67,37 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Local state management
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  ;; The global state transtions should be predecible
+  ;; and testable and this way offers to have flexible
+  ;; and extensible way to handle state transitions.
+
+  (defmulti state-transition
+    (fn [_ [event]] event))
+
+  (defmethod state-transition :index-counters
+    [state [_ counters]]
+    (letfn [(index-counter [state item]
+              (assoc-in [:counters-by-id (:id item)] item))]
+      (reduce index-counters state counters)))
+
+  (defmethod state-transition :add-counters
+    [state [_ counters]]
+    (let [counter-ids (mapv :id counters)]
+      (-> (assoc state :counters counter-ids)
+          (state-transition [:index-counters data]))))
+
+  ;; Example how to be used in a single operation
+  ;; in a "transaction" over state
+  (swap! state state-transition [:add-counters foobar])
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;; Client Server
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
   (defmulti read-fn (fn [k p] k))
   (defmulti novelty-fn (fn [k p] k))
 
@@ -78,18 +109,10 @@
 
   (defmethod read-fn :counters
     [_ params]
-    (letfn [(index-counter [state item]
-              (assoc-in [:counters-by-id (:id item)] item))
-            (index-counters [state items]
-              (reduce index-counters state items))
-            (add-counters [state items]
-              (assoc state :counters items))]
-      (m/mlet [items (api/get-counters)]
-        (m/return
-         (fn [state]
-           (-> state
-               (add-counters items)
-               (index-counters items)))))))
+    ;; Here you can use any method for obtain date such as using
+    ;; traditional api rest, postal, websockets, whatever.
+    (m/alet [items (api/get-counters)]
+      #(state-transition % [:add-counters items]))))
 
   (defmethod read-fn :title
     [_ params]
@@ -145,4 +168,5 @@
 
   (rum/mount (root {:state (util/focus state)})
              (gdom/getElement "app"))
+
   )
