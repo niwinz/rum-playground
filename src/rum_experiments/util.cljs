@@ -118,11 +118,15 @@
     (swap! a (fn [s] (l/over lens #(apply f % x y more) s)))
     (deref self)))
 
-(defn focus-atom
+(defn focus
   ([a]
-   (focus-atom l/id a))
+   (focus l/id a))
   ([lens a]
    (Focus. lens a)))
+
+(defn derive
+  [a path]
+  (focus (l/in path) a))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Helper for define components
@@ -153,3 +157,5 @@
                        [(str (gensym "rum-")) specs])
         specs (into [] render-xform specs)]
     (component* name specs)))
+
+
