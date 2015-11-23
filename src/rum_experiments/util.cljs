@@ -1,4 +1,5 @@
 (ns rum-experiments.util
+  (:refer-clojure :exclude [derive])
   (:require [rum.core :as rum]
             [cats.labs.lens :as l]))
 
@@ -132,30 +133,21 @@
 ;; Helper for define components
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def ^:private
-  render-xform
-  (map (fn [item]
-         (if (:render item)
-           (let [rfn (:render item)]
-             (assoc item :render (fn [state] [(rfn state) state])))
-           item))))
-
-(defn- component*
-  [name specs]
-  (let [cls (rum/build-class specs name)
+(defn component
+  [spec]
+  (let [name (or (:name spec)
+                 (str (gensym "rum-")))
+        mixins (or (:mixins spec)
+                   [])
+        spec (merge (dissoc spec :name :mixins)
+                    (when-let [rfn (:render spec)]
+                      {:render #(vector (rfn %) %)}))
+        cls (rum/build-class (conj mixins spec) name)
         ctr (fn self
               ([] (self {}))
               ([props]
                (let [state {:rum/props props}]
                (rum/element cls state nil))))]
     (with-meta ctr {:rum/class cls})))
-
-(defn component
-  [& specs]
-  (let [[name specs] (if (string? (first specs))
-                       [(first specs) (rest specs)]
-                       [(str (gensym "rum-")) specs])
-        specs (into [] render-xform specs)]
-    (component* name specs)))
 
 

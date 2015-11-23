@@ -2,10 +2,9 @@
   :description "My first Om program!"
   :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/clojurescript "1.7.170"]
-                 [rum "0.5.0" :exclusions [cljsjs/react sablono]]
+                 [rum "0.6.0"]
+                 [hodgepodge "0.1.3"]
                  [funcool/cats "1.1.0-SNAPSHOT"]
-                 [cljsjs/react "0.14.0-1"]
-                 [cljsjs/react-dom "0.14.0-1"]
-                 [sablono "0.4.0"]
+                 [funcool/promesa "0.5.1"]
                  [figwheel-sidecar "0.5.0-1" :scope "test"]])
 

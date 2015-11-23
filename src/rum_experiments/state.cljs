@@ -1,12 +1,11 @@
 (ns rum-experiments.state
-  (:require [promesa.core :as p]))
+  (:require [promesa.core :as p]
+            [cats.labs.lens :as l]))
 
-;; (defprotocol IResponseHandler
-;;   (-read-result [] ))
-
-;; (defprotocol IStore
-;;   (-init [_] "Initialize the store")
-;;   (-read [_
+(defprotocol IStore
+  "A low-level store interface."
+  (-init [_] "Initialize the store")
+  (-emit [_ t k p] "Emit event to store."))
 
 (defrecord Store [state init read novelty]
   cljs.core/IDeref
@@ -22,88 +21,92 @@
 
   IReset
   (-reset! [self newval]
-    (swap! a #(l/put lens newval %))
-    (deref self))
+    (cljs.core/-reset! state newval))
 
   ISwap
   (-swap! [self f]
-    (swap! a (fn [s] (l/over lens f s)))
-    (deref self))
+    (swap! state f))
 
   (-swap! [self f x]
-    (swap! a (fn [s] (l/over lens #(f % x) s)))
-    (deref self))
+    (swap! state f x))
 
   (-swap! [self f x y]
-    (swap! a (fn [s] (l/over lens #(f % x y) s)))
-    (deref self))
+    (swap! state f x y))
 
   (-swap! [self f x y more]
-    (swap! a (fn [s] (l/over lens #(apply f % x y more) s)))
-    (deref self)))
+    (swap! state f x y more))
 
   IStore
-  (-emit [_ type key params]
+  (-init [this]
+    (init this))
+
+  (-emit [this type key params]
     (case type
-      :read (read
+      :read (read this key params)
+      :novelty (novelty this key params)
+      (throw (ex-info "Unknown event type." {})))))
+
+(def ^:private noop (constantly nil))
 
 (defn store
-  [{:keys [state init read novelty] :as opts}]
-  {:pre [(fn? read) (fn? novelty)
-         (instance cljs.core.Atom state)]}
-  (let [store (Store. state read novelty)]
-    (-init store)
-    store))
+  "Default store constructor."
+  ([state]
+   (store state {}))
+  ([state {:keys [init read novelty]
+           :or {init noop read noop novelty noop}
+           :as opts}]
+   {:pre [(ifn? read) (ifn? novelty)
+          (instance? cljs.core.Atom state)]}
+   (let [store (Store. state init read novelty)]
+     (-init store)
+     store)))
+
+(defn- interpret-result
+  [store result]
+  (cond
+    (p/promise? result)
+    (p/then result #(interpret-result store %))
+
+    (fn? result)
+    (do
+      (swap! store result)
+      (p/resolved nil))
+
+    (sequential? result)
+    (p/resolved
+     (mapv (fn [item]
+             (if (fn? item)
+               (do (swap! store item)
+                   nil)
+               item)) result))
+
+    :else
+    (p/resolved result)))
 
 (defn- interpret-params
-  [params]
-  (cond
-    (and (vector? params)
-         (every? vector? params)
-         (every? keyword? (map first params)))
-    params
+  [store type params]
+  (let [numparams (count params)]
+    (cond
+      (= 0 numparams)
+      (throw (ex-info "Wrong arguments" {}))
 
-    (and (vector? params)
-         (keyword? (first params)))
+      (= 1 (count params))
+      (let [params (first params)]
+        (->> (-emit store type (first params) (second params))
+             (interpret-result store)))
 
+      :else
+      (let [fun #(-emit store type (first %) (second %))]
+        (->> (p/all (mapv fun params))
+             (interpret-result store))))))
 
 (defn read
-  [store params]
-  (let [result (-emit store :read k params)]
-    (cond
-      (p/promise? result)
-      (p/then result (fn [result]
-                       (if (fn? result)
-                         (swap! (.-state store) result)
-                          result)))
-
-       (fn? result)
-       (do
-         (swap! (.-state store) result)
-         (p/resolved nil))
-
-       :else
-       (p/resolved result)))))
+  [store & params]
+  (interpret-params store :read params))
 
 (defn novelty
-  ([store k]
-   (novelty store k nil))
-  ([store k params]
-   (let [result (-novelty store k params)]
-     (cond
-       (p/promise? result)
-       (p/then result (fn [result]
-                        (if (fn? result)
-                          (swap! (.-state store) result)
-                          result)))
-
-       (fn? result)
-       (do
-         (swap! (.-state store) result)
-         (p/resolved nil))
-
-       :else
-       (p/resolved result)))))
+  [store & params]
+  (interpret-params store :novelty params))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; State management experiments
@@ -180,15 +183,15 @@
 
   (defn init
     [s]
-    (m/mlet [p (r/read! store [:counters :useless-param])]
+    (m/mlet [p (read store [:counters :useless-param])]
       (println "Initialized")))
 
   ;; The store should be created with
 
-  (def store
-    (st/store {:state state
-               :init init
-               :read read-fn
-               :novelty novelty-fn}))
+  (defonce state (atom {}))
+  (defonce store
+    (st/store state {:init init
+                     :read read-fn
+                     :novelty novelty-fn}))
 
   )
