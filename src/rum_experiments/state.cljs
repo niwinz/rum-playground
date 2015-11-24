@@ -9,7 +9,7 @@
 
 (defrecord Store [state init read novelty]
   cljs.core/IDeref
-  (-deref [_] state)
+  (-deref [_] (deref state))
 
   cljs.core/IWatchable
   (-add-watch [self key cb]

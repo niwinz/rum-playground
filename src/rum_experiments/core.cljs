@@ -1,5 +1,6 @@
 (ns rum-experiments.core
   (:require [goog.dom :as gdom]
+            [hodgepodge.core :refer [local-storage]]
             [rum-experiments.util :as util]
             [rum-experiments.state :as s]
             [promesa.core :as p]
@@ -34,8 +35,22 @@
 (defmethod state-transition :add
   [state [_ id]]
   (let [item {:id (str (random-uuid)) :num 0}
-        counters (:counters state)]
-    (-> (assoc state :counters (conj counters item))
+        counters (conj (:counters state) item)]
+    (-> (assoc state :counters counters)
+        (state-transition [:index-counters counters]))))
+
+(defmethod state-transition :increment
+  [state [_ id]]
+  (update-in state [:counters-by-id id :num] inc))
+
+(defmethod state-transition :decrement
+  [state [_ id]]
+  (update-in state [:counters-by-id id :num] dec))
+
+(defmethod state-transition :delete
+  [state [_ id]]
+  (let [counters (filter #(not= (:id %) id) (:counters state))]
+    (-> (assoc state :counters counters)
         (state-transition [:index-counters counters]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -47,23 +62,19 @@
 
 (defmethod read-fn :load-counters
   [_ _ num]
-  ;; Simulate backend query with a little lag
-  ;; TODO: read it from database
-  (m/mlet [_ (p/delay 500)]
-    (m/return {:items []})))
+  (get local-storage :counters {:items []}))
 
-(defmethod novelty-fn :toggle-state
-  [store key id]
-  ;; TODO: persist it in a database
-  (swap! store state-transition [:toggle-state id]))
+(defmethod novelty-fn :default
+  [store key param]
+  (swap! store state-transition [key param]))
 
-(defmethod novelty-fn :add
-  [store key _]
-  (swap! store state-transition [:add]))
+(defmethod novelty-fn :save
+  [store key param]
+  (let [data (mapv (fn [id]
 
-(defmethod novelty-fn :delete
-  [store key id]
-  (swap! store state-transition [:delete id]))
+                     (get-in @store [:counters-by-id id]))
+                   (:counter-ids @store))]
+    (assoc! local-storage :counters {:items data})))
 
 (defn init-fn
   [store]
@@ -71,7 +82,7 @@
     (swap! store state-transition [:set-counters (:items p)])
     (println "Initialized")))
 
-(def store
+(defonce store
   (s/store state {:init init-fn
                   :read read-fn
                   :novelty novelty-fn}))
@@ -85,6 +96,8 @@
   (let [item (get-in own [:rum/props :item])]
     (html
      [:li {:class-name "item noselect"}
+      [:button {:on-click #(s/novelty store [:increment (:id @item)])} "+"]
+      [:button {:on-click #(s/novelty store [:decrement (:id @item)])} "-"]
       [:button {:on-click #(s/novelty store [:delete (:id @item)])} "x"]
       [:span {:on-click #(s/novelty store [:increment (:id @item)])
               :style {:font-style "monospace"}}
@@ -106,12 +119,15 @@
     (html
      [:section {:class-name "root"}
       [:div {:class-name "title"} "Counters:"]
+      [:button {:class-name "new-button"
+                :on-click #(s/novelty store [:add])} "new"]
+      [:button {:class-name "save-button" :style {:margin-left "2px"}
+                :on-click #(s/novelty store [:save])} "save"]
       [:ul {:class-name "items"}
        (for [cid (:counter-ids @state)]
          (let [item (util/derive state [:counters-by-id cid])
                cnt (todo-item {:item item})]
-            (rum/with-key cnt cid)))]
-      [:button {:on-click #(s/novelty store [:add])} "+"]]
+            (rum/with-key cnt cid)))]]
      )))
 
 (def root
