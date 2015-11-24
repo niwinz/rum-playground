@@ -93,14 +93,16 @@
 
 (defn counter-render
   [own]
-  (let [item (get-in own [:rum/props :item])]
+  (let [item (get-in own [:rum/props :item])
+        increment #(swap! store state-transition [:increment (:id @item)])
+        decrement #(swap! store state-transition [:decrement (:id @item)])
+        delete #(swap! store state-transition [:delete (:id @item)])]
     (html
      [:li {:class-name "item noselect"}
-      [:button {:on-click #(s/novelty store [:increment (:id @item)])} "+"]
-      [:button {:on-click #(s/novelty store [:decrement (:id @item)])} "-"]
-      [:button {:on-click #(s/novelty store [:delete (:id @item)])} "x"]
-      [:span {:on-click #(s/novelty store [:increment (:id @item)])
-              :style {:font-style "monospace"}}
+      [:button {:on-click increment} "+"]
+      [:button {:on-click decrement} "-"]
+      [:button {:on-click delete} "x"]
+      [:span {:style {:font-style "monospace"}}
        (str " counter (" (:id @item) ") => " (:num @item))]])))
 
 (def todo-item

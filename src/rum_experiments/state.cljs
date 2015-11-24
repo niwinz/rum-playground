@@ -167,14 +167,14 @@
   ;; are use funcool/muse and datascript.
 
   (defmethod read-fn :counters
-    [_ params]
+    [store key params]
     ;; Here you can use any method for obtain date such as using
     ;; traditional api rest, postal, websockets, whatever.
     (m/alet [items (api/get-counters)]
-      #(state-transition % [:add-counters items])))
+      (swap! store state-transition [:add-counters items])))
 
   (defmethod novelty-fn :increment
-    [_ {:keys [id] :as params}]
+    [_ _ {:keys [id] :as params}]
     #(state-transition % [:increment id]))
 
   ;; The init function is some kind of entry point of the storage
@@ -193,5 +193,4 @@
     (st/store state {:init init
                      :read read-fn
                      :novelty novelty-fn}))
-
   )
