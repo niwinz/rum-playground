@@ -54,80 +54,15 @@
 ;; Lenses
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; This is similar Focus type as in cats.labs.lens with additional
-;; features such as:
-;; - it implements ISeqable, IIndexed and ILookup for derive other focuses.
-;; - it does not trigger watchers if value does not changes.
-
-(deftype Focus [lens a]
-  IDeref
-  (-deref [_] (l/focus lens @a))
-
-  IWatchable
-  (-add-watch [self key cb]
-    (add-watch a key (fn [key _ oldval newval]
-                       (let [old' (l/focus lens oldval)
-                             new' (l/focus lens newval)]
-                         (if (not= old' new')
-                           (cb key self old' new'))))))
-  (-remove-watch [_ key]
-    (remove-watch a key))
-
-  ISeqable
-  (-seq [coll]
-    (let [cnt (count coll)]
-      (map #(Focus. (l/nth %) coll) (range cnt))))
-
-  ICounted
-  (-count [coll]
-    (cljs.core/-count @coll))
-
-  IIndexed
-  (-nth [coll n]
-    (cljs.core/-nth coll n nil))
-  (-nth [coll n not-found]
-    (Focus. (l/nth n) coll))
-
-  ILookup
-  (-lookup [coll k]
-    (cljs.core/-lookup coll k nil))
-
-  (-lookup [coll k not-found]
-    (if (number? k)
-      (Focus. (l/nth k) coll)
-      (Focus. (l/key k) coll)))
-
-  IReset
-  (-reset! [self newval]
-    (swap! a #(l/put lens newval %))
-    (deref self))
-
-  ISwap
-  (-swap! [self f]
-    (swap! a (fn [s] (l/over lens f s)))
-    (deref self))
-
-  (-swap! [self f x]
-    (swap! a (fn [s] (l/over lens #(f % x) s)))
-    (deref self))
-
-  (-swap! [self f x y]
-    (swap! a (fn [s] (l/over lens #(f % x y) s)))
-    (deref self))
-
-  (-swap! [self f x y more]
-    (swap! a (fn [s] (l/over lens #(apply f % x y more) s)))
-    (deref self)))
-
-(defn focus
-  ([a]
-   (focus l/id a))
-  ([lens a]
-   (Focus. lens a)))
-
 (defn derive
   [a path]
-  (focus (l/in path) a))
+  (l/focus-atom (l/in path) a))
+
+(defn focus
+  ([state]
+   (l/focus-atom l/id state))
+  ([lens state]
+   (l/focus-atom lens state)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Helper for define components
